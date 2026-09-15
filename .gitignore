@@ -1,0 +1,29 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# App bundle, icon and other build output (see build.sh)
+build/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local test mails (keep private data out of the repo)
+*.eml
+*.msg
