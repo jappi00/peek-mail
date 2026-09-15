@@ -1,5 +1,6 @@
-# Builds a universal, Developer ID signed and notarized Peek Mail.dmg and publishes it as a GitHub release.
-# Trigger: push a version tag, e.g. `git tag v1.0.0 && git push origin v1.0.0`.
+# Builds a universal, Developer ID signed and notarized Peek Mail.dmg, publishes it as a GitHub release
+# and attaches a signed Sparkle appcast for auto-updates.
+# Trigger: push a version tag, e.g. `git tag v1.1.0 && git push origin v1.1.0`.
 name: Release
 
 on:
@@ -13,13 +14,35 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  SPARKLE_VERSION: "2.10.0"
+  SPARKLE_SHA256: "c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c"
+
 jobs:
   release:
     runs-on: macos-15
     timeout-minutes: 60
+    env:
+      # Sparkle compares CFBundleVersion, so it must grow with every release.
+      BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check release secrets
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          missing=0
+          for name in MACOS_CERTIFICATE_P12_BASE64 MACOS_CERTIFICATE_PASSWORD NOTARY_KEY_P8_BASE64 NOTARY_KEY_ID NOTARY_ISSUER_ID SPARKLE_PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then echo "::error::Repository secret $name is not set"; missing=1; fi
+          done
+          exit $missing
 
       - name: Read version from tag
         run: |
@@ -64,10 +87,18 @@ jobs:
           printf '%s' "$NOTARY_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
           echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notary-key.p8" >> "$GITHUB_ENV"
 
+      - name: Install Sparkle tools
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/Sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          echo "$SPARKLE_SHA256  $RUNNER_TEMP/Sparkle.tar.xz" | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/sparkle"
+          tar -xf "$RUNNER_TEMP/Sparkle.tar.xz" -C "$RUNNER_TEMP/sparkle"
+          echo "SPARKLE_BIN=$RUNNER_TEMP/sparkle/bin" >> "$GITHUB_ENV"
+
       - name: Build and sign universal app
         env:
           UNIVERSAL: "1"
-          BUILD_NUMBER: ${{ github.run_number }}
         run: ./build.sh
 
       - name: Notarize app
@@ -93,7 +124,15 @@ jobs:
           xcrun stapler validate "build/Peek Mail.app"
           xcrun stapler validate build/PeekMail.dmg
 
-      - name: Publish GitHub release
+      - name: Sign update for Sparkle
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          SIGNATURE=$(printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_BIN/sign_update" --ed-key-file - -p build/PeekMail.dmg)
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$SPARKLE_BIN/sign_update" --ed-key-file - --verify build/PeekMail.dmg "$SIGNATURE"
+          echo "SPARKLE_SIGNATURE=$SIGNATURE" >> "$GITHUB_ENV"
+
+      - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -102,7 +141,23 @@ jobs:
           gh release create "$GITHUB_REF_NAME" PeekMail.dmg PeekMail.dmg.sha256 \
             --title "Peek Mail $VERSION" \
             --generate-notes \
-            --verify-tag
+            --verify-tag \
+            --draft
+
+      - name: Attach Sparkle appcast
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --json body --jq .body > "$RUNNER_TEMP/notes.md"
+          gh api markdown -F text=@"$RUNNER_TEMP/notes.md" -f mode=gfm -f context="$GITHUB_REPOSITORY" > "$RUNNER_TEMP/notes.html"
+          ./Scripts/make-appcast.sh "$VERSION" "$BUILD_NUMBER" "$SPARKLE_SIGNATURE" "$RUNNER_TEMP/notes.html"
+          xmllint --noout build/appcast.xml
+          gh release upload "$GITHUB_REF_NAME" build/appcast.xml
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest
 
       - name: Remove signing material
         if: always()

@@ -1,7 +1,6 @@
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
 
 # App bundle, icon and other build output (see build.sh)
 build/

@@ -2,7 +2,7 @@
 
 A small, native macOS app for viewing exported emails. Drop in `.eml` or Outlook `.msg` files and read them the way they were meant to look, with no mail account, no Outlook and no setup.
 
-Built with SwiftUI and zero third-party dependencies. Website: [peekmail.oesterl.ing](https://peekmail.oesterl.ing)
+Built with SwiftUI. The only third-party dependency is [Sparkle](https://sparkle-project.org) for updates. Website: [peekmail.oesterl.ing](https://peekmail.oesterl.ing)
 
 ## Features
 
@@ -31,7 +31,7 @@ Releases are universal (Apple Silicon and Intel), signed with a Developer ID and
 
 ### Build from source
 
-Requires Swift 5.10 or later, either with Xcode or just the Command Line Tools (`xcode-select --install`).
+Requires Xcode 16 or later (make sure it's the active developer directory: `sudo xcode-select -s /Applications/Xcode.app`). The Command Line Tools alone aren't enough, because they lack the SwiftUI macro plugins needed together with the Sparkle package.
 
 ```bash
 git clone https://github.com/jappi00/peek-mail.git
@@ -48,7 +48,8 @@ Peek Mail registers itself for `.eml` and `.msg`, but Apple Mail usually stays t
 
 ## Privacy
 
-- Everything happens locally. Peek Mail makes no network requests of its own and collects no data.
+- Everything happens locally, and Peek Mail collects no data.
+- The only connection Peek Mail makes on its own is the optional update check (via [Sparkle](https://sparkle-project.org)). On first launch Peek Mail asks whether to check automatically, and you can change that anytime in **Settings**. A check downloads a small update list from `peekmail.oesterl.ing` (served by Cloudflare and GitHub), which see your IP address and Peek Mail version. Nothing else is sent, and never anything about your emails.
 - To keep the history working after you move or delete the original files, Peek Mail stores a copy of every opened mail in `~/Library/Application Support/PeekMail`. **File → Clear History…** or the *Clear All* button deletes them.
 - Remote content in HTML mails is blocked until you allow it for that message.
 
@@ -115,7 +116,7 @@ Bug reports with (anonymized) sample files are very welcome.
 
 ## Contributing
 
-Issues and pull requests are welcome. Please keep the project dependency-free and run `swift build` before opening a PR.
+Issues and pull requests are welcome. Please avoid adding new dependencies and run `./build.sh` before opening a PR.
 
 ## License
 

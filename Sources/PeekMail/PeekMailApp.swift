@@ -5,6 +5,7 @@ import SwiftUI
 struct PeekMailApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var store = HistoryStore.shared
+    @ObservedObject private var updater = AppUpdater.shared
 
     var body: some Scene {
         Window("Peek Mail", id: "main") {
@@ -15,6 +16,8 @@ struct PeekMailApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Peek Mail") { AppInfo.showAboutPanel() }
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
             }
             CommandGroup(replacing: .help) {
                 Link("Peek Mail Website", destination: AppInfo.website)
@@ -31,6 +34,10 @@ struct PeekMailApp: App {
                 Button("Clear History…", role: .destructive) { store.isConfirmingClear = true }
                     .disabled(store.items.isEmpty)
             }
+        }
+
+        Settings {
+            SettingsView()
         }
     }
 }
@@ -50,6 +57,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     window.center()
                 }
             }
+        }
+
+        // Ask about automatic update checks once the main window is on screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            AppUpdater.shared.askAboutAutomaticChecksIfNeeded()
         }
     }
 

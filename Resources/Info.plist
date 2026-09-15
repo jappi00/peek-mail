@@ -18,6 +18,10 @@
     <string>1</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>SUFeedURL</key>
+    <string>https://peekmail.oesterl.ing/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>5KRTvWEUWDa6veQNnLKLuv3Bbj+4V2eDHbhppJ7opQw=</string>
     <key>NSHumanReadableCopyright</key>
     <string>© 2026 Jan-Phillip Oesterling. MIT License.</string>
     <key>LSMinimumSystemVersion</key>
