@@ -18,6 +18,10 @@ DerivedData/
 .LSOverride
 ._*
 
+# Cloudflare / Node (website/)
+.wrangler/
+node_modules/
+
 # Editors
 .vscode/
 .idea/

@@ -33,11 +33,16 @@ final class HistoryStore {
 
     private init() {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        directory = base.appendingPathComponent("PeekMail", isDirectory: true)
-        // Carry over history from when the app was called "Mail Viewer".
-        let legacy = base.appendingPathComponent("MailViewer", isDirectory: true)
-        if !FileManager.default.fileExists(atPath: directory.path), FileManager.default.fileExists(atPath: legacy.path) {
-            try? FileManager.default.moveItem(at: legacy, to: directory)
+        if let custom = UserDefaults.standard.string(forKey: "PeekMailDataDirectory") {
+            // Launch argument `-PeekMailDataDirectory <path>` keeps demo and screenshot sessions out of the real history.
+            directory = URL(fileURLWithPath: (custom as NSString).expandingTildeInPath, isDirectory: true)
+        } else {
+            directory = base.appendingPathComponent("PeekMail", isDirectory: true)
+            // Carry over history from when the app was called "Mail Viewer".
+            let legacy = base.appendingPathComponent("MailViewer", isDirectory: true)
+            if !FileManager.default.fileExists(atPath: directory.path), FileManager.default.fileExists(atPath: legacy.path) {
+                try? FileManager.default.moveItem(at: legacy, to: directory)
+            }
         }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         if let data = try? Data(contentsOf: indexURL),

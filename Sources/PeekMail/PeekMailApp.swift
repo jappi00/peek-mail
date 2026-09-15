@@ -13,6 +13,16 @@ struct PeekMailApp: App {
                 .frame(minWidth: 780, minHeight: 500)
         }
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Peek Mail") { AppInfo.showAboutPanel() }
+            }
+            CommandGroup(replacing: .help) {
+                Link("Peek Mail Website", destination: AppInfo.website)
+                Link("Contact Support…", destination: AppInfo.supportMail)
+                Divider()
+                Link("Report an Issue on GitHub", destination: AppInfo.issues)
+                Link("Source Code", destination: AppInfo.sourceCode)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { store.presentOpenPanel() }
                     .keyboardShortcut("o")
@@ -29,6 +39,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate()
+
+        // Launch argument `-PeekMailWindowSize 1200x760` gives screenshots a consistent window size.
+        if let value = UserDefaults.standard.string(forKey: "PeekMailWindowSize") {
+            let parts = value.split(separator: "x").compactMap { Double($0) }
+            if parts.count == 2 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    guard let window = NSApp.windows.first(where: { $0.isVisible }) else { return }
+                    window.setContentSize(NSSize(width: parts[0], height: parts[1]))
+                    window.center()
+                }
+            }
+        }
     }
 
     /// Called when files are opened from Finder (double-click, "Open With", dropping on the Dock icon).

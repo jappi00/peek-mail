@@ -354,30 +354,77 @@ struct AttachmentChip: View {
         }
     }
 
+    /// File name without path components, separators or leading dots (so "../x" or ".." can't escape the folder).
+    private var safeFilename: String {
+        let name = (attachment.filename as NSString).lastPathComponent
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutLeadingDots = String(name.drop { $0 == "." })
+        return withoutLeadingDots.isEmpty ? "attachment" : withoutLeadingDots
+    }
+
+    /// Programs, scripts, installers and similar files that can run code when opened.
+    private var canRunCode: Bool {
+        let ext = (safeFilename as NSString).pathExtension.lowercased()
+        let riskyExtensions: Set<String> = [
+            "app", "command", "tool", "sh", "bash", "zsh", "csh", "ksh", "py", "pl", "rb", "js", "jar",
+            "pkg", "mpkg", "dmg", "iso", "terminal", "workflow", "action", "scpt", "scptd", "applescript",
+            "prefpane", "osax", "kext", "plugin", "webloc", "inetloc", "fileloc",
+        ]
+        if riskyExtensions.contains(ext) { return true }
+        // Files without a known type may be Unix executables.
+        guard !ext.isEmpty, let type = UTType(filenameExtension: ext) else { return true }
+        return type.conforms(to: .executable) || type.conforms(to: .script) || type.conforms(to: .applicationBundle)
+    }
+
     private func temporaryURL() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("PeekMail", isDirectory: true)
             .appendingPathComponent(attachment.id.uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent(attachment.filename.replacingOccurrences(of: "/", with: "-"))
+        let url = dir.appendingPathComponent(safeFilename)
         try attachment.data.write(to: url)
+        Self.quarantine(url)
         return url
     }
 
+    /// Marks a file as downloaded from the internet, so Gatekeeper checks it before it can run.
+    private static func quarantine(_ url: URL) {
+        var url = url
+        var values = URLResourceValues()
+        values.quarantineProperties = [
+            kLSQuarantineAgentNameKey as String: "Peek Mail",
+            kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherDownload as String,
+        ]
+        try? url.setResourceValues(values)
+    }
+
     private func open() {
-        guard let url = try? temporaryURL() else { return }
-        if HistoryStore.supportedExtensions.contains(url.pathExtension.lowercased()) {
-            HistoryStore.shared.open([url]) // attached emails open right here
-        } else {
-            NSWorkspace.shared.open(url)
+        if HistoryStore.supportedExtensions.contains((safeFilename as NSString).pathExtension.lowercased()) {
+            if let url = try? temporaryURL() { HistoryStore.shared.open([url]) } // attached emails open right here
+            return
         }
+        if canRunCode && !confirmOpeningCode() { return }
+        guard let url = try? temporaryURL() else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func confirmOpeningCode() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Open “\(safeFilename)”?"
+        alert.informativeText = "This attachment may be a program, script or installer. Opening it can run code on your Mac. Only open it if you trust the sender."
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Open Anyway")
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     private func saveAs() {
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = attachment.filename
+        panel.nameFieldStringValue = safeFilename
         if panel.runModal() == .OK, let url = panel.url {
-            try? attachment.data.write(to: url)
+            if (try? attachment.data.write(to: url)) != nil { Self.quarantine(url) }
         }
     }
 }
@@ -400,6 +447,7 @@ struct MailWebView: NSViewRepresentable {
         let webView = NonDropWebView(frame: .zero, configuration: config)
         webView.unregisterDraggedTypes()
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         return webView
     }
@@ -444,19 +492,51 @@ struct MailWebView: NSViewRepresentable {
         return list
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var loadedHTML: String?
         var loadedAllowRemote: Bool?
         var generation = 0
 
+        /// Schemes a clicked link may hand to other apps. Everything else (file:, custom app schemes, …) is ignored.
+        static let externalSchemes: Set<String> = ["http", "https", "mailto"]
+
+        static func openExternally(_ url: URL?) {
+            guard let url, let scheme = url.scheme?.lowercased(), externalSchemes.contains(scheme) else { return }
+            NSWorkspace.shared.open(url)
+        }
+
+        /// Only the mail document itself may load (`loadHTMLString` without a base URL is `about:blank`).
+        /// Form submissions, redirects, meta refreshes and frames are cancelled; clicked links go to the browser.
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-            if navigationAction.navigationType == .linkActivated, let url = navigationAction.request.url {
-                NSWorkspace.shared.open(url)
-                decisionHandler(.cancel)
+            let url = navigationAction.request.url
+            let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? false
+            let isAboutURL = url?.scheme?.lowercased() == "about"
+
+            if navigationAction.navigationType == .linkActivated {
+                // In-page anchors (about:blank#section) may scroll; anything else opens outside, if allowed.
+                if isAboutURL && isMainFrame {
+                    decisionHandler(.allow)
+                } else {
+                    Self.openExternally(url)
+                    decisionHandler(.cancel)
+                }
                 return
             }
-            decisionHandler(.allow)
+            if navigationAction.navigationType == .other && isMainFrame && isAboutURL {
+                decisionHandler(.allow)
+                return
+            }
+            decisionHandler(.cancel)
+        }
+
+        /// Links with `target="_blank"` ask for a new window; open allowed ones in the browser instead.
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                     for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            if navigationAction.navigationType == .linkActivated {
+                Self.openExternally(navigationAction.request.url)
+            }
+            return nil
         }
     }
 }
