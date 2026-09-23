@@ -4,19 +4,45 @@ import UniformTypeIdentifiers
 import WebKit
 
 struct MessageDetailView: View {
+    private enum LoadState {
+        case loading
+        case loaded(MailMessage)
+        case failed(String)
+    }
+
     @Environment(HistoryStore.self) private var store
     let item: HistoryItem
+    @State private var state = LoadState.loading
 
     var body: some View {
-        switch store.message(for: item) {
-        case .success(let message):
-            MessageContainer(message: message, item: item)
-        case .failure(let error):
-            ContentUnavailableView("Couldn't Read Message", systemImage: "exclamationmark.triangle",
-                                   description: Text(error.localizedDescription))
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) { OpenButton() }
-                }
+        Group {
+            switch state {
+            case .loaded(let message):
+                MessageContainer(message: message, item: item)
+            case .failed(let reason):
+                ContentUnavailableView("Couldn't Read Message", systemImage: "exclamationmark.triangle",
+                                       description: Text(reason))
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) { OpenButton() }
+                    }
+            case .loading:
+                ProgressView("Opening \(item.fileName)…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) { OpenButton() }
+                    }
+            }
+        }
+        .task(id: item.id) {
+            if let cached = store.cachedMessage(for: item) {
+                state = .loaded(cached)
+                return
+            }
+            state = .loading
+            switch await store.loadMessage(for: item) {
+            case .success(let message): state = .loaded(message)
+            case .failure(let error): state = .failed(error.localizedDescription)
+            }
         }
     }
 }
@@ -55,9 +81,16 @@ struct MessageContainer: View {
 }
 
 struct MessageView: View {
+    @Environment(HistoryStore.self) private var store
     let message: MailMessage
     let item: HistoryItem
-    @State private var allowRemoteContent = false
+    @State private var finder = MessageFinder()
+    @State private var isShowingFind = false
+    @State private var findFocusRequests = 0
+
+    private var allowRemoteContent: Bool {
+        store.remoteContentAllowed.contains(item.id)
+    }
 
     private var hasRemoteContent: Bool {
         message.htmlBody.map(MailHTML.hasRemoteContent) ?? false
@@ -87,7 +120,7 @@ struct MessageView: View {
                     Text("Remote images are blocked to protect your privacy.")
                         .font(.callout)
                     Spacer(minLength: 8)
-                    Button("Load Images") { allowRemoteContent = true }
+                    Button("Load Images") { store.remoteContentAllowed.insert(item.id) }
                         .controlSize(.small)
                 }
                 .padding(.horizontal, 12)
@@ -97,7 +130,22 @@ struct MessageView: View {
                 .padding(.bottom, 10)
             }
 
-            MailWebView(html: MailHTML.document(for: message), allowRemoteContent: allowRemoteContent)
+            if isShowingFind {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    SearchControls(finder: finder, placeholder: "Find in message",
+                                   handlesShortcut: false, focusOnAppear: true, focusTrigger: findFocusRequests)
+                    Spacer()
+                    Button("Done") { closeFind() }
+                        .keyboardShortcut(.cancelAction)
+                }
+                .controlSize(.small)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 10)
+            }
+
+            MailWebView(html: MailHTML.document(for: message), allowRemoteContent: allowRemoteContent, finder: finder)
                 .background(message.htmlBody != nil ? Color.white : Color(nsColor: .textBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
@@ -105,8 +153,29 @@ struct MessageView: View {
                 .padding([.horizontal, .bottom], 16)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            // ⌘F opens the find bar, or focuses it again if it's already open.
+            Button("") {
+                if isShowingFind { findFocusRequests += 1 } else { isShowingFind = true }
+            }
+            .keyboardShortcut("f")
+            .opacity(0)
+            .accessibilityHidden(true)
+        }
         .navigationTitle(message.subject.isEmpty ? "(No Subject)" : message.subject)
         .navigationSubtitle(item.fileName)
+        .onAppear {
+            // Launch argument `-PeekMailFindQuery <text>` opens the find bar pre-filled (for screenshots).
+            if let query = UserDefaults.standard.string(forKey: "PeekMailFindQuery"), !query.isEmpty {
+                isShowingFind = true
+                finder.query = query
+            }
+        }
+    }
+
+    private func closeFind() {
+        finder.query = ""
+        isShowingFind = false
     }
 
     private var header: some View {
@@ -432,12 +501,16 @@ struct AttachmentChip: View {
 /// WebKit registers itself as a drag destination and swallows file drops;
 /// refusing drag types lets drops fall through to the window's drop handler.
 final class NonDropWebView: WKWebView {
+    /// Search for the message shown in this view; notified when a load finishes.
+    weak var finder: MessageFinder?
+
     override func registerForDraggedTypes(_ newTypes: [NSPasteboard.PasteboardType]) {}
 }
 
 struct MailWebView: NSViewRepresentable {
     let html: String
     let allowRemoteContent: Bool
+    var finder: MessageFinder?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -449,6 +522,8 @@ struct MailWebView: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
+        webView.finder = finder
+        finder?.attach(webView)
         return webView
     }
 

@@ -26,13 +26,18 @@ else
     ARCH_FLAGS=()
 fi
 swift build -c release --product PeekMail ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}
-BINARY="$(swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)/PeekMail"
+swift build -c release --product PeekMailQuickLook ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}
+BIN_DIR="$(swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)"
+BINARY="$BIN_DIR/PeekMail"
+QUICKLOOK_BINARY="$BIN_DIR/PeekMailQuickLook"
 if [ "${UNIVERSAL:-0}" = "1" ]; then
-    ARCHS=" $(lipo -archs "$BINARY") "
-    if [[ "$ARCHS" != *" arm64 "* || "$ARCHS" != *" x86_64 "* ]]; then
-        echo "error: $BINARY is not universal (architectures:$ARCHS)" >&2
-        exit 1
-    fi
+    for binary in "$BINARY" "$QUICKLOOK_BINARY"; do
+        ARCHS=" $(lipo -archs "$binary") "
+        if [[ "$ARCHS" != *" arm64 "* || "$ARCHS" != *" x86_64 "* ]]; then
+            echo "error: $binary is not universal (architectures:$ARCHS)" >&2
+            exit 1
+        fi
+    done
 fi
 [ -d "$SPARKLE_FRAMEWORK" ] || { echo "error: $SPARKLE_FRAMEWORK not found (run 'swift package resolve')" >&2; exit 1; }
 
@@ -62,6 +67,16 @@ if [ ! -f build/AppIcon.icns ]; then
 fi
 cp build/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
+# Quick Look extension (Space in Finder), with the same version as the app.
+APPEX="$APP/Contents/PlugIns/PeekMailQuickLook.appex"
+mkdir -p "$APPEX/Contents/MacOS"
+cp "$QUICKLOOK_BINARY" "$APPEX/Contents/MacOS/PeekMailQuickLook"
+cp Resources/QuickLook-Info.plist "$APPEX/Contents/Info.plist"
+for key in CFBundleShortVersionString CFBundleVersion; do
+    value=$(/usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist")
+    /usr/libexec/PlistBuddy -c "Set :$key $value" "$APPEX/Contents/Info.plist"
+done
+
 # Sign inside-out, as documented by Sparkle (never with --deep).
 if [ "$IDENTITY" = "-" ]; then
     SIGN=(codesign --force --sign -)
@@ -72,6 +87,8 @@ SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 "${SIGN[@]}" "$SPARKLE/Versions/B/Autoupdate"
 "${SIGN[@]}" "$SPARKLE/Versions/B/Updater.app"
 "${SIGN[@]}" "$SPARKLE"
+# App extensions must be sandboxed.
+"${SIGN[@]}" --entitlements Resources/QuickLook.entitlements "$APPEX"
 "${SIGN[@]}" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 

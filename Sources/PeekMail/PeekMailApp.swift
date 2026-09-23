@@ -34,6 +34,14 @@ struct PeekMailApp: App {
                 Button("Clear History…", role: .destructive) { store.isConfirmingClear = true }
                     .disabled(store.items.isEmpty)
             }
+            CommandGroup(replacing: .printItem) {
+                Button("Export as PDF…") { MailPrinter.printSelection(exportAsPDF: true) }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .disabled(store.selectedItem == nil)
+                Button("Print…") { MailPrinter.printSelection(exportAsPDF: false) }
+                    .keyboardShortcut("p")
+                    .disabled(store.selectedItem == nil)
+            }
         }
 
         Settings {
@@ -59,6 +67,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        // Launch argument `-PeekMailFocusContent YES` moves keyboard focus from the history list to the
+        // message or source text, so screenshots show the gray (unfocused) sidebar selection.
+        if UserDefaults.standard.bool(forKey: "PeekMailFocusContent") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                guard let window = NSApp.windows.first(where: { $0.isVisible }), let root = window.contentView else { return }
+                if let target = Self.firstView(in: root, where: { view in
+                    view is NonDropWebView || ((view as? NSTextView).map { !$0.isFieldEditor } ?? false)
+                }) {
+                    window.makeFirstResponder(target)
+                }
+            }
+        }
+
         // Ask about automatic update checks once the main window is on screen.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             AppUpdater.shared.askAboutAutomaticChecksIfNeeded()
@@ -72,4 +93,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    private static func firstView(in view: NSView, where matches: (NSView) -> Bool) -> NSView? {
+        if matches(view) { return view }
+        for subview in view.subviews {
+            if let found = firstView(in: subview, where: matches) { return found }
+        }
+        return nil
+    }
 }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Peek Mail: a tiny macOS viewer for .eml and .msg files</title>
-<meta name="description" content="Peek Mail is a free, open-source macOS app that opens .eml and Outlook .msg files. Rendered mail, history sidebar, blocked remote images, and a headers & source view for debugging.">
+<meta name="description" content="Peek Mail is a free, open-source macOS app that opens .eml and Outlook .msg files. Rendered mail, Quick Look previews, winmail.dat support, blocked remote images, search, print to PDF, and a headers & source view for debugging.">
 <meta name="author" content="Jan-Phillip Oesterling">
 <meta name="color-scheme" content="light dark">
 <link rel="canonical" href="https://peekmail.oesterl.ing/">
@@ -12,7 +12,7 @@
 <meta property="og:site_name" content="Peek Mail">
 <meta property="og:title" content="Peek Mail">
 <meta property="og:description" content="A tiny, native macOS viewer for .eml and Outlook .msg files. Free and open source.">
-<meta property="og:image" content="https://peekmail.oesterl.ing/screenshots/message-dark.png">
+<meta property="og:image" content="https://peekmail.oesterl.ing/screenshots/message-dark.png?v=1.2.0">
 <meta property="og:url" content="https://peekmail.oesterl.ing/">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="/favicon.png">
@@ -30,7 +30,7 @@
   "license": "https://opensource.org/licenses/MIT",
   "isAccessibleForFree": true,
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
-  "screenshot": "https://peekmail.oesterl.ing/screenshots/message-dark.png",
+  "screenshot": "https://peekmail.oesterl.ing/screenshots/message-dark.png?v=1.2.0",
   "author": { "@type": "Person", "name": "Jan-Phillip Oesterling", "email": "mailto:jp@oesterl.ing" },
   "codeRepository": "https://github.com/jappi00/peek-mail"
 }
@@ -116,16 +116,25 @@
   .btn svg { width: 18px; height: 18px; }
   .meta { margin-top: 16px; font-size: 13.5px; color: var(--faint); }
 
-  /* Screenshots (captured with the macOS window shadow, so no extra frame) */
+  /* Screenshots (window captures include the macOS shadow, so no extra frame) */
   .shot { display: block; width: 100%; height: auto; }
   .shot[hidden] { display: none; } /* class display would otherwise override the hidden attribute */
   .hero-shot { max-width: 1040px; margin: 48px auto 0; }
+  .wide-shot { max-width: 1040px; margin-inline: auto; }
+  /* The Quick Look capture is cropped to the preview itself, so it gets a frame here. */
+  .panel-shot {
+    display: block; width: 100%; max-width: 420px; height: auto; margin-inline: auto;
+    border-radius: 12px; border: 1px solid var(--line);
+    box-shadow: 0 30px 70px -24px rgba(40, 40, 90, 0.45), 0 8px 20px -10px rgba(40, 40, 90, 0.25);
+  }
 
   /* Sections */
   section { padding-block: 88px 0; }
   .eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 12.5px; font-weight: 700; color: var(--accent); }
   h2 { font-size: clamp(1.8rem, 4vw, 2.6rem); letter-spacing: -0.025em; line-height: 1.15; margin: 8px 0 14px; }
   .section-lede { color: var(--muted); max-width: 42rem; margin: 0 0 36px; font-size: 1.08rem; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+  .split .section-lede { margin-bottom: 24px; }
 
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .card { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; }
@@ -133,11 +142,16 @@
   .card .ico svg { width: 20px; height: 20px; }
   .card h3 { margin: 0 0 6px; font-size: 16.5px; letter-spacing: -0.01em; }
   .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .new { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 99px; font-size: 11px; font-weight: 700;
+         letter-spacing: 0.04em; vertical-align: 2px; color: #fff; background: linear-gradient(100deg, var(--accent-2), var(--accent-3)); }
 
   ul.checks { list-style: none; padding: 0; margin: 0 0 32px; display: grid; gap: 12px 32px; grid-template-columns: 1fr 1fr; }
+  .split ul.checks { grid-template-columns: 1fr; margin-bottom: 0; }
   ul.checks li { display: flex; gap: 12px; color: var(--muted); }
   ul.checks li b { color: var(--text); font-weight: 600; }
   ul.checks svg { flex: none; width: 20px; height: 20px; margin-top: 3px; color: var(--accent); }
+  .hint { margin-top: 20px; padding: 14px 16px; border-radius: 12px; background: var(--chip); color: var(--muted); font-size: 14px; }
+  .hint b { color: var(--text); }
 
   .tabs { display: inline-flex; gap: 4px; padding: 4px; border-radius: 11px; background: var(--chip); margin-bottom: 8px; }
   .tabs button {
@@ -145,7 +159,6 @@
     border: 0; border-radius: 8px; padding: 7px 16px; cursor: pointer;
   }
   .tabs button[aria-selected="true"] { background: var(--bg-elev); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
-  .debug-shot { max-width: 1040px; margin-inline: auto; }
 
   .steps { display: grid; gap: 16px; grid-template-columns: repeat(3, 1fr); }
   .step { background: var(--bg-elev); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
@@ -167,6 +180,10 @@
   }
   .copy:hover { background: rgba(255, 255, 255, 0.18); }
   .note { font-size: 14px; color: var(--faint); margin-top: 14px; }
+  kbd {
+    font: 600 12.5px -apple-system, sans-serif; padding: 1px 6px; border-radius: 5px;
+    border: 1px solid var(--line); background: var(--bg-elev); color: var(--text);
+  }
 
   .final { text-align: center; padding-block: 96px 20px; }
   footer { border-top: 1px solid var(--line); margin-top: 80px; padding-block: 32px 44px; color: var(--faint); font-size: 14px; }
@@ -178,6 +195,7 @@
   @media (max-width: 860px) {
     .grid, .steps { grid-template-columns: 1fr 1fr; }
     ul.checks { grid-template-columns: 1fr; }
+    .split { grid-template-columns: 1fr; gap: 36px; }
     footer .wrap { grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 560px) {
@@ -196,6 +214,7 @@
   <a class="brand" href="/"><img src="/icon.png" alt="" width="30" height="30">Peek Mail</a>
   <div class="nav-links">
     <a href="#features">Features</a>
+    <a href="#quick-look">Quick Look</a>
     <a href="#privacy">Privacy</a>
     <a href="#install">Download</a>
     <a class="gh" href="https://github.com/jappi00/peek-mail">GitHub</a>
@@ -219,7 +238,7 @@
   <p class="meta">Free &amp; open source · Universal app for Apple Silicon &amp; Intel · macOS 14 Sonoma or later</p>
 
   <div class="hero-shot">
-    <img class="shot" src="/screenshots/message-dark.png" width="1246" height="806" fetchpriority="high"
+    <img class="shot" src="/screenshots/message-dark.png?v=1.2.0" width="1312" height="872" fetchpriority="high"
          alt="Peek Mail window: a history sidebar with four emails and an opened quarterly report showing sender, recipients, two attachments, a notice that remote images are blocked, and the rendered HTML body">
   </div>
 </header>
@@ -233,12 +252,22 @@
     <div class="card">
       <div class="ico" style="background:linear-gradient(135deg,#5c9eff,#3b6fd9)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9 6 9-6"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg></div>
       <h3>.eml and Outlook .msg</h3>
-      <p>Opens both formats natively, including HTML mails with inline images, plain text, and attached emails.</p>
+      <p>Opens both formats natively, including HTML mails with inline images, plain text, and attached emails. Large files open in the background.</p>
     </div>
     <div class="card">
-      <div class="ico" style="background:linear-gradient(135deg,#8e7bff,#5b4bd6)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></div>
-      <h3>Drop, double-click, done</h3>
-      <p>Drag files onto the window or Dock icon, press ⌘O, or open them straight from Finder, even several at once.</p>
+      <div class="ico" style="background:linear-gradient(135deg,#34c3c9,#12808a)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/></svg></div>
+      <h3>Quick Look in Finder <span class="new">NEW</span></h3>
+      <p>Press <kbd>Space</kbd> on a mail file in Finder and see the whole message, without opening any app.</p>
+    </div>
+    <div class="card">
+      <div class="ico" style="background:linear-gradient(135deg,#f5b400,#c77d00)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg></div>
+      <h3>winmail.dat unpacked <span class="new">NEW</span></h3>
+      <p>Mails from Outlook or Exchange that hide their content in <code>winmail.dat</code> show their real body and attachments.</p>
+    </div>
+    <div class="card">
+      <div class="ico" style="background:linear-gradient(135deg,#8e7bff,#5b4bd6)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+      <h3>Find, print, export <span class="new">NEW</span></h3>
+      <p>Search inside the message with <kbd>⌘F</kbd>, print it, or save it as a PDF, header and attachments list included.</p>
     </div>
     <div class="card">
       <div class="ico" style="background:linear-gradient(135deg,#ffab5e,#e5731f)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg></div>
@@ -260,6 +289,39 @@
       <h3>Headers &amp; source</h3>
       <p>Inspect every header and the raw source with syntax highlighting and search. Made for debugging deliverability.</p>
     </div>
+    <div class="card">
+      <div class="ico" style="background:linear-gradient(135deg,#9aa3ff,#5b5bf0)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></div>
+      <h3>Updates, if you want</h3>
+      <p>Peek Mail asks once whether to check for updates, and new versions install with a click.</p>
+    </div>
+  </div>
+</section>
+
+<section id="find" class="wrap">
+  <div class="eyebrow">Find, print, export</div>
+  <h2>Find what you're looking for. Keep what matters.</h2>
+  <p class="section-lede">Press <kbd>⌘F</kbd> to search the message itself, with a match counter and jumps between results. Print with <kbd>⌘P</kbd> or save a PDF with <kbd>⇧⌘E</kbd>: the sender, recipients, date and attachment list come along, so the copy makes sense on its own.</p>
+  <div class="wide-shot">
+    <img class="shot" src="/screenshots/find-dark.png?v=1.2.0" width="1312" height="872" loading="lazy"
+         alt="Peek Mail with the find bar open, searching the message for “revenue”, showing “1 of 4” and the first match highlighted in the mail">
+  </div>
+</section>
+
+<section id="quick-look" class="wrap">
+  <div class="split">
+    <div>
+      <div class="eyebrow">Quick Look</div>
+      <h2>Peek without opening.</h2>
+      <p class="section-lede">Select a mail file in Finder and press <kbd>Space</kbd>. The preview shows the whole message: sender, recipients, date, attachments and the formatted body.</p>
+      <ul class="checks">
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><b>Outlook .msg files</b> finally get a real preview on the Mac</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><b>Offline by design:</b> previews run sandboxed without network access, so tracking pixels never load</span></li>
+        <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><b>Works with winmail.dat</b> and every other format Peek Mail can open</span></li>
+      </ul>
+      <p class="hint"><b>For .eml files</b>, macOS uses Apple Mail's preview by default. To use Peek Mail's, turn off Mail under System Settings → General → Login Items &amp; Extensions → Quick Look.</p>
+    </div>
+    <img class="panel-shot" src="/screenshots/quicklook.png?v=1.2.0" width="816" height="996" loading="lazy"
+         alt="Quick Look preview of an email: subject, a table with From, To, Cc, Date and Attachments, followed by the formatted message body">
   </div>
 </section>
 
@@ -273,14 +335,14 @@
     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><b>Search with match navigation</b> and <kbd>⌘F</kbd></span></li>
     <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><span><b>MIME boundaries</b> stand out, base64 payloads fade into the background</span></li>
   </ul>
-  <div class="debug-shot">
+  <div class="wide-shot">
     <div class="tabs" role="tablist" aria-label="Debug views">
       <button type="button" role="tab" id="tab-headers" aria-selected="true" aria-controls="shot-headers">Headers</button>
       <button type="button" role="tab" id="tab-source" aria-selected="false" aria-controls="shot-source">Source</button>
     </div>
-    <img class="shot" id="shot-headers" role="tabpanel" aria-labelledby="tab-headers" src="/screenshots/headers-dark.png" width="1246" height="806" loading="lazy"
+    <img class="shot" id="shot-headers" role="tabpanel" aria-labelledby="tab-headers" src="/screenshots/headers-dark.png?v=1.2.0" width="1312" height="872" loading="lazy"
          alt="Headers view listing every header of the email, with SPF, DKIM and DMARC results highlighted in green and the encoded subject decoded below">
-    <img class="shot" id="shot-source" role="tabpanel" aria-labelledby="tab-source" src="/screenshots/source-dark.png" width="1246" height="806" loading="lazy" hidden
+    <img class="shot" id="shot-source" role="tabpanel" aria-labelledby="tab-source" src="/screenshots/source-dark.png?v=1.2.0" width="1312" height="872" loading="lazy" hidden
          alt="Source view showing the raw email with colored header names, highlighted authentication results, MIME boundaries and HTML markup">
   </div>
 </section>
@@ -292,7 +354,7 @@
   <div class="grid">
     <div class="card">
       <h3>Remote images blocked</h3>
-      <p>Tracking pixels, remote images, stylesheets and fonts don't load until you click <em>Load Images</em> for that message.</p>
+      <p>Tracking pixels, remote images, stylesheets and fonts don't load until you click <em>Load Images</em> for that message. Quick Look previews never load them at all.</p>
     </div>
     <div class="card">
       <h3>Mails can't do anything</h3>
@@ -312,7 +374,7 @@
   <div class="steps">
     <div class="step"><div class="n">01</div><h3>Download</h3><p>Get <code>PeekMail.dmg</code> from the latest release on GitHub.</p></div>
     <div class="step"><div class="n">02</div><h3>Install</h3><p>Open the disk image and drag <em>Peek Mail</em> into your Applications folder.</p></div>
-    <div class="step"><div class="n">03</div><h3>Open a mail</h3><p>Drop an <code>.eml</code> or <code>.msg</code> file on the window, or use <em>Open With → Peek Mail</em> in Finder.</p></div>
+    <div class="step"><div class="n">03</div><h3>Open a mail</h3><p>Drop an <code>.eml</code> or <code>.msg</code> file on the window, use <em>Open With → Peek Mail</em>, or press <kbd>Space</kbd> in Finder.</p></div>
   </div>
   <div class="install-cta">
     <a class="btn primary" href="https://github.com/jappi00/peek-mail/releases/latest/download/PeekMail.dmg">

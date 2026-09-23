@@ -95,6 +95,15 @@ enum EMLParser {
             }
         }
 
+        // Outlook's winmail.dat (TNEF) carries the real body and attachments; unpack it instead of showing it.
+        if type == "application/ms-tnef" || filename?.lowercased() == "winmail.dat" || TNEF.isTNEF(data),
+           let tnef = TNEF.parse(data) {
+            if msg.htmlBody == nil { msg.htmlBody = tnef.htmlBody }
+            if msg.textBody?.trimmed.isEmpty ?? true, let text = tnef.textBody { msg.textBody = text }
+            msg.attachments.append(contentsOf: tnef.attachments)
+            return
+        }
+
         var name = filename
         if name == nil {
             if type == "message/rfc822" {

@@ -14,6 +14,17 @@ let package = Package(
             name: "PeekMail",
             dependencies: ["MailCore", .product(name: "Sparkle", package: "Sparkle")]
         ),
+        // Quick Look extension. Built as an executable whose entry point is NSExtensionMain;
+        // build.sh wraps it into PeekMailQuickLook.appex inside the app.
+        .executableTarget(
+            name: "PeekMailQuickLook",
+            dependencies: ["MailCore"],
+            swiftSettings: [.unsafeFlags(["-parse-as-library", "-application-extension"])],
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-e", "-Xlinker", "_NSExtensionMain", "-Xlinker", "-application_extension"]),
+                .linkedFramework("QuickLookUI"),
+            ]
+        ),
         .executableTarget(name: "maildump", dependencies: ["MailCore"]),
     ]
 )

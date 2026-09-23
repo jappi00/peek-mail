@@ -6,8 +6,11 @@ Built with SwiftUI. The only third-party dependency is [Sparkle](https://sparkle
 
 ## Features
 
-- **Opens `.eml` and `.msg` files.** Drag them onto the window or Dock icon, use <kbd>⌘O</kbd>, or double-click them in Finder (several files at once work too).
+- **Opens `.eml` and `.msg` files.** Drag them onto the window or Dock icon, use <kbd>⌘O</kbd>, or double-click them in Finder (several files at once work too). Large files open in the background without freezing the window.
 - **Rendered messages.** HTML mails render with inline images; plain-text mails get clickable links. Attached emails open right inside the viewer.
+- **Outlook `winmail.dat` unpacked.** Mails from Outlook or Exchange that hide their body and attachments in a TNEF `winmail.dat` part show their real content.
+- **Quick Look.** Press <kbd>Space</kbd> on an `.msg` file in Finder to preview it without opening the app. For `.eml` files macOS uses Apple Mail's preview by default; to use Peek Mail's instead, turn off Mail under *System Settings → General → Login Items & Extensions → Quick Look*.
+- **Find, print and export.** Search inside the message with <kbd>⌘F</kbd>, print with <kbd>⌘P</kbd>, or export as PDF with <kbd>⇧⌘E</kbd>, always with the header (sender, recipients, date, attachments) above the body.
 - **History sidebar.** Every opened mail is kept with sender, subject and date, with search. Re-opening the same file jumps back to its entry instead of adding a duplicate.
 - **Privacy and safety by default.**
   - Remote images, stylesheets and tracking pixels are blocked until you click *Load Images*.
@@ -87,6 +90,8 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
+Release notes come from `release-notes/<tag>.md` (for example `release-notes/v1.2.0.md`) if that file exists, otherwise GitHub generates them. They're also shown in the in-app update window, so it's worth writing them by hand.
+
 The workflow builds a universal app, signs it with the Developer ID certificate, notarizes and staples both the app and `PeekMail.dmg`, verifies them with Gatekeeper and publishes a GitHub release with a SHA-256 checksum.
 
 It needs these repository secrets:
@@ -101,7 +106,6 @@ It needs these repository secrets:
 
 ## Known limitations
 
-- `winmail.dat` (TNEF) attachments aren't unpacked yet.
 - S/MIME signed or encrypted mails show the `smime.p7m` part as an attachment.
 - Emails attached inside `.msg` files are skipped.
 - `.msg` files that store their body only as RTF are supported, but this path has seen little real-world testing.

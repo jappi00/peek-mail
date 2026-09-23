@@ -136,11 +136,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Hand-written notes in release-notes/<tag>.md win over GitHub's generated ones
+          # (they also appear in Sparkle's update window).
+          NOTES=(--generate-notes)
+          if [ -f "release-notes/$GITHUB_REF_NAME.md" ]; then
+            NOTES=(--notes-file "$GITHUB_WORKSPACE/release-notes/$GITHUB_REF_NAME.md")
+          fi
           cd build
           shasum -a 256 PeekMail.dmg > PeekMail.dmg.sha256
           gh release create "$GITHUB_REF_NAME" PeekMail.dmg PeekMail.dmg.sha256 \
             --title "Peek Mail $VERSION" \
-            --generate-notes \
+            "${NOTES[@]}" \
             --verify-tag \
             --draft
 

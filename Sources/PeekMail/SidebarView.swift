@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @Environment(HistoryStore.self) private var store
-    let search: String
+    @Binding var search: String
 
     private var filtered: [HistoryItem] {
         guard !search.isEmpty else { return store.items }
@@ -30,6 +30,31 @@ struct SidebarView: View {
                     }
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // Own search field instead of .searchable, so it gets room around it.
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search History", text: $search)
+                    .textFieldStyle(.plain)
+                if !search.isEmpty {
+                    Button { search = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Clear search")
+                }
+            }
+            .font(.callout)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.07)))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.08)))
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 10)
+        }
         .onDeleteCommand {
             if let id = store.selection { store.remove([id]) }
         }
@@ -41,6 +66,11 @@ struct SidebarView: View {
                         Text("\(store.items.count) \(store.items.count == 1 ? "email" : "emails")")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        if store.importsInProgress > 0 {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .help("Opening \(store.importsInProgress) file(s)…")
+                        }
                         Spacer()
                         Button(role: .destructive) {
                             store.isConfirmingClear = true

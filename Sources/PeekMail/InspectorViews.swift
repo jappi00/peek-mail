@@ -6,10 +6,26 @@ enum MessageViewMode: String, CaseIterable {
     case message, headers, source
 }
 
-/// Find controls shared by the Headers and Source views: field, match counter, previous/next and ⌘F.
-struct SearchControls: View {
-    @Bindable var finder: SourceFinder
+/// Something the search controls can drive: the source/header text views or the rendered message.
+@MainActor
+protocol FindModel: AnyObject, Observable {
+    var query: String { get set }
+    var matchCount: Int { get }
+    /// Zero-based index of the highlighted match.
+    var currentMatch: Int { get }
+    func next()
+    func previous()
+}
+
+/// Find controls shared by the Message, Headers and Source views: field, match counter, previous/next and ⌘F.
+struct SearchControls<Finder: FindModel>: View {
+    @Bindable var finder: Finder
     let placeholder: String
+    /// Whether ⌘F focuses this field (the message find bar handles ⌘F itself).
+    var handlesShortcut = true
+    var focusOnAppear = false
+    /// Changing this value focuses the field (e.g. pressing ⌘F while the find bar is open).
+    var focusTrigger = 0
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -20,24 +36,32 @@ struct SearchControls: View {
                 .focused($isFocused)
                 .onSubmit { finder.next() }
             if !finder.query.isEmpty {
-                Text(finder.matches.isEmpty ? "No matches" : "\(finder.current + 1) of \(finder.matches.count)")
+                Text(finder.matchCount == 0 ? "No matches" : "\(finder.currentMatch + 1) of \(finder.matchCount)")
                     .font(.caption)
                     .monospacedDigit()
-                    .foregroundStyle(finder.matches.isEmpty ? Color.red : Color.secondary)
+                    .foregroundStyle(finder.matchCount == 0 ? Color.red : Color.secondary)
                     .fixedSize(horizontal: true, vertical: false)
                 Button { finder.previous() } label: { Image(systemName: "chevron.up") }
-                    .disabled(finder.matches.isEmpty)
+                    .disabled(finder.matchCount == 0)
                     .help("Previous match")
                 Button { finder.next() } label: { Image(systemName: "chevron.down") }
-                    .disabled(finder.matches.isEmpty)
+                    .disabled(finder.matchCount == 0)
                     .help("Next match (Return)")
             }
         }
         .background {
-            Button("") { isFocused = true }
-                .keyboardShortcut("f")
-                .opacity(0)
-                .accessibilityHidden(true)
+            if handlesShortcut {
+                Button("") { isFocused = true }
+                    .keyboardShortcut("f")
+                    .opacity(0)
+                    .accessibilityHidden(true)
+            }
+        }
+        .onAppear {
+            if focusOnAppear { isFocused = true }
+        }
+        .onChange(of: focusTrigger) {
+            isFocused = true
         }
     }
 }
@@ -170,12 +194,14 @@ struct SourceView: View {
 /// Searches a text view and marks matches with temporary background colors.
 @MainActor
 @Observable
-final class SourceFinder {
+final class SourceFinder: FindModel {
     var query = "" {
         didSet { if query != oldValue { runSearch() } }
     }
     private(set) var matches: [NSRange] = []
     private(set) var current = 0
+    var matchCount: Int { matches.count }
+    var currentMatch: Int { current }
 
     @ObservationIgnored private weak var textView: NSTextView?
     private static let maxMatches = 10_000

@@ -9,7 +9,7 @@ struct ContentView: View {
         @Bindable var store = store
 
         NavigationSplitView {
-            SidebarView(search: search)
+            SidebarView(search: $search)
                 .navigationSplitViewColumnWidth(min: 230, ideal: 280, max: 400)
         } detail: {
             if let id = store.selection, let item = store.items.first(where: { $0.id == id }) {
@@ -22,7 +22,6 @@ struct ContentView: View {
                     }
             }
         }
-        .searchable(text: $search, placement: .sidebar, prompt: "Search History")
         .dropDestination(for: URL.self) { urls, _ in
             store.open(urls)
             return true

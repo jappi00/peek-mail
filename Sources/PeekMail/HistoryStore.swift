@@ -16,6 +16,7 @@ struct HistoryItem: Codable, Identifiable, Hashable {
 }
 
 /// Keeps a copy of every opened mail in Application Support so history survives the original moving.
+/// Reading and parsing happen off the main thread, so large files don't freeze the window.
 @MainActor
 @Observable
 final class HistoryStore {
@@ -26,6 +27,10 @@ final class HistoryStore {
     var selection: UUID?
     var errorMessage: String?
     var isConfirmingClear = false
+    /// Number of files currently being read and parsed.
+    private(set) var importsInProgress = 0
+    /// Messages for which the user clicked "Load Images" in this session.
+    var remoteContentAllowed: Set<UUID> = []
 
     @ObservationIgnored private var cache: [UUID: MailMessage] = [:]
     @ObservationIgnored private let directory: URL
@@ -53,36 +58,60 @@ final class HistoryStore {
     }
 
     func open(_ urls: [URL]) {
+        Task { await importFiles(urls) }
+    }
+
+    private func importFiles(_ urls: [URL]) async {
         var failures: [String] = []
         for url in urls {
             guard Self.supportedExtensions.contains(url.pathExtension.lowercased()) else {
                 failures.append("\(url.lastPathComponent): only .eml and .msg files are supported.")
                 continue
             }
-            do {
-                let data = try Data(contentsOf: url)
-                let hash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            importsInProgress += 1
+            defer { importsInProgress -= 1 }
 
-                if let existing = items.firstIndex(where: { $0.hash == hash }) {
-                    var item = items.remove(at: existing)
-                    item.addedAt = .now
-                    items.insert(item, at: 0)
-                    selection = item.id
-                    continue
+            // Read and hash in the background.
+            let read = await Task.detached(priority: .userInitiated) { () -> Result<(Data, String), Error> in
+                Result {
+                    let data = try Data(contentsOf: url)
+                    return (data, SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined())
                 }
+            }.value
+            guard case .success(let (data, hash)) = read else {
+                if case .failure(let error) = read { failures.append("\(url.lastPathComponent): \(error.localizedDescription)") }
+                continue
+            }
 
-                let message = try MailParser.parse(data: data)
-                let id = UUID()
-                let storedName = "\(id.uuidString).\(url.pathExtension.lowercased())"
-                try data.write(to: directory.appendingPathComponent(storedName))
+            if let existing = items.firstIndex(where: { $0.hash == hash }) {
+                var item = items.remove(at: existing)
+                item.addedAt = .now
+                items.insert(item, at: 0)
+                selection = item.id
+                continue
+            }
+
+            // Parse and store the copy in the background.
+            let id = UUID()
+            let storedURL = directory.appendingPathComponent("\(id.uuidString).\(url.pathExtension.lowercased())")
+            let parsed = await Task.detached(priority: .userInitiated) { () -> Result<MailMessage, Error> in
+                Result {
+                    let message = try MailParser.parse(data: data)
+                    try data.write(to: storedURL)
+                    return message
+                }
+            }.value
+
+            switch parsed {
+            case .success(let message):
                 let item = HistoryItem(
-                    id: id, fileName: url.lastPathComponent, storedName: storedName,
+                    id: id, fileName: url.lastPathComponent, storedName: storedURL.lastPathComponent,
                     subject: message.subject, sender: message.from?.displayName ?? "Unknown Sender",
                     date: message.date, addedAt: .now, hash: hash)
                 cache[id] = message
                 items.insert(item, at: 0)
                 selection = id
-            } catch {
+            case .failure(let error):
                 failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
@@ -90,13 +119,24 @@ final class HistoryStore {
         save()
     }
 
-    func message(for item: HistoryItem) -> Result<MailMessage, Error> {
+    func cachedMessage(for item: HistoryItem) -> MailMessage? {
+        cache[item.id]
+    }
+
+    /// Returns the parsed message, parsing it in the background if it isn't cached yet.
+    func loadMessage(for item: HistoryItem) async -> Result<MailMessage, Error> {
         if let cached = cache[item.id] { return .success(cached) }
-        return Result {
-            let message = try MailParser.parse(data: Data(contentsOf: fileURL(for: item)))
-            cache[item.id] = message
-            return message
-        }
+        let url = fileURL(for: item)
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<MailMessage, Error> in
+            Result { try MailParser.parse(data: Data(contentsOf: url)) }
+        }.value
+        if case .success(let message) = result { cache[item.id] = message }
+        return result
+    }
+
+    var selectedItem: HistoryItem? {
+        guard let selection else { return nil }
+        return items.first { $0.id == selection }
     }
 
     func fileURL(for item: HistoryItem) -> URL {
@@ -109,6 +149,7 @@ final class HistoryStore {
             cache[item.id] = nil
         }
         items.removeAll { ids.contains($0.id) }
+        remoteContentAllowed.subtract(ids)
         if let selection, ids.contains(selection) { self.selection = items.first?.id }
         save()
     }
