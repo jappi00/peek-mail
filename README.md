@@ -125,3 +125,5 @@ Issues and pull requests are welcome. Please avoid adding new dependencies and r
 ## License
 
 [MIT](LICENSE) © 2026 Jan-Phillip Oesterling · [jp@oesterl.ing](mailto:jp@oesterl.ing) · [peekmail.oesterl.ing](https://peekmail.oesterl.ing)
+
+Supported by [dispoly.net](https://dispoly.net)
